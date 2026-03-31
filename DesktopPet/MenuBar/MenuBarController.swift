@@ -1,6 +1,6 @@
 // MenuBarController.swift
-// Manages the NSStatusItem (menubar icon) and its dropdown menu.
-// Also owns the floating settings panel.
+// Manages the NSStatusItem and its menus.
+// Supports multiple pets — each with its own settings panel.
 
 import AppKit
 import SwiftUI
@@ -8,30 +8,30 @@ import UniformTypeIdentifiers
 
 final class MenuBarController: NSObject {
 
-    // MARK: - Dependencies
-    private let settings: AppSettings
-    private weak var overlayWC: OverlayWindowController?
+    // MARK: - Callbacks to AppDelegate
+    var onAddPet: (() -> Void)?
+    var onRemovePet: ((String) -> Void)?   // instanceID
 
     // MARK: - Status Item
     private var statusItem: NSStatusItem!
 
-    // MARK: - Settings Panel
-    private var settingsPanel: NSPanel?
+    // MARK: - Per-pet panels  [instanceID: NSPanel]
+    private var settingsPanels: [String: NSPanel] = [:]
+
+    // MARK: - Pets snapshot (kept in sync by AppDelegate)
+    private(set) var pets: [OverlayWindowController] = []
 
     // MARK: - Init
 
-    init(settings: AppSettings, overlayWindowController: OverlayWindowController) {
-        self.settings = settings
-        self.overlayWC = overlayWindowController
+    override init() {
         super.init()
         setupStatusItem()
     }
 
-    // MARK: - Status Item Setup
+    // MARK: - Status Item
 
     private func setupStatusItem() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-
         if let button = statusItem.button {
             button.title = "🐾"
             button.toolTip = "Desktop Pet"
@@ -42,28 +42,115 @@ final class MenuBarController: NSObject {
     }
 
     @objc private func statusButtonClicked(_ sender: NSStatusBarButton) {
-        let event = NSApp.currentEvent
-        if event?.type == .rightMouseUp {
+        if NSApp.currentEvent?.type == .rightMouseUp {
             showContextMenu(sender)
         } else {
-            toggleSettingsPanel(sender)
+            showContextMenu(sender)   // left-click also shows menu for multi-pet
         }
     }
 
-    // MARK: - Settings Panel (left click)
+    // MARK: - Context Menu
 
-    private func toggleSettingsPanel(_ sender: NSStatusBarButton) {
-        if let panel = settingsPanel, panel.isVisible {
+    private func showContextMenu(_ sender: NSStatusBarButton) {
+        let menu = NSMenu()
+
+        // ── Add pet ──────────────────────────────────────────────────────
+        let addItem = NSMenuItem(title: "Add Pet…", action: #selector(addPet), keyEquivalent: "n")
+        addItem.target = self
+        menu.addItem(addItem)
+
+        // ── Per-pet section ───────────────────────────────────────────────
+        if !pets.isEmpty {
+            menu.addItem(.separator())
+            for (idx, pet) in pets.enumerated() {
+                let petNum = idx + 1
+                let header = NSMenuItem(title: "Pet \(petNum)", action: nil, keyEquivalent: "")
+                header.isEnabled = false
+                menu.addItem(header)
+
+                let settingsItem = NSMenuItem(
+                    title: "  Settings…",
+                    action: #selector(openPetSettings(_:)),
+                    keyEquivalent: ""
+                )
+                settingsItem.target = self
+                settingsItem.representedObject = pet.settings.instanceID
+                menu.addItem(settingsItem)
+
+                let importItem = NSMenuItem(
+                    title: "  Import Animation…",
+                    action: #selector(importForPet(_:)),
+                    keyEquivalent: ""
+                )
+                importItem.target = self
+                importItem.representedObject = pet
+                menu.addItem(importItem)
+
+                let removeItem = NSMenuItem(
+                    title: "  Remove",
+                    action: #selector(removePet(_:)),
+                    keyEquivalent: ""
+                )
+                removeItem.target = self
+                removeItem.representedObject = pet.settings.instanceID
+                menu.addItem(removeItem)
+
+                if idx < pets.count - 1 { menu.addItem(.separator()) }
+            }
+        }
+
+        // ── Quit ──────────────────────────────────────────────────────────
+        menu.addItem(.separator())
+        menu.addItem(withTitle: "Quit Desktop Pet",
+                     action: #selector(NSApplication.terminate(_:)),
+                     keyEquivalent: "q")
+
+        statusItem.menu = menu
+        statusItem.button?.performClick(nil)
+        statusItem.menu = nil
+    }
+
+    // MARK: - Actions
+
+    @objc private func addPet() {
+        onAddPet?()
+    }
+
+    @objc private func openPetSettings(_ item: NSMenuItem) {
+        guard let id = item.representedObject as? String,
+              let pet = pets.first(where: { $0.settings.instanceID == id }),
+              let button = statusItem.button
+        else { return }
+        toggleSettingsPanel(for: pet, relativeTo: button)
+    }
+
+    @objc private func importForPet(_ item: NSMenuItem) {
+        guard let pet = item.representedObject as? OverlayWindowController else { return }
+        openFilePicker(for: pet)
+    }
+
+    @objc private func removePet(_ item: NSMenuItem) {
+        guard let id = item.representedObject as? String else { return }
+        settingsPanels[id]?.orderOut(nil)
+        settingsPanels.removeValue(forKey: id)
+        onRemovePet?(id)
+    }
+
+    // MARK: - Settings Panel
+
+    func toggleSettingsPanel(for pet: OverlayWindowController, relativeTo button: NSStatusBarButton) {
+        let id = pet.settings.instanceID
+
+        if let panel = settingsPanels[id], panel.isVisible {
             panel.orderOut(nil)
             return
         }
 
-        let panel = makeSettingsPanel()
-        self.settingsPanel = panel
+        let panel = makeSettingsPanel(for: pet)
+        settingsPanels[id] = panel
 
-        // Position below the status bar button
-        if let buttonWindow = sender.window {
-            let buttonRect = buttonWindow.convertToScreen(sender.frame)
+        if let buttonWindow = button.window {
+            let buttonRect = buttonWindow.convertToScreen(button.frame)
             let panelX = buttonRect.midX - panel.frame.width / 2
             let panelY = buttonRect.minY - panel.frame.height - 4
             panel.setFrameOrigin(NSPoint(x: panelX, y: panelY))
@@ -73,14 +160,23 @@ final class MenuBarController: NSObject {
         NSApp.activate(ignoringOtherApps: true)
     }
 
-    private func makeSettingsPanel() -> NSPanel {
+    private func makeSettingsPanel(for pet: OverlayWindowController) -> NSPanel {
+        let id = pet.settings.instanceID
         let view = SettingsView(
-            settings: settings,
-            onImport: { [weak self] in self?.openFilePicker() },
+            settings: pet.settings,
+            onImport: { [weak self, weak pet] in
+                guard let self, let pet else { return }
+                self.openFilePicker(for: pet)
+            },
+            onRemove: { [weak self] in
+                self?.settingsPanels[id]?.orderOut(nil)
+                self?.settingsPanels.removeValue(forKey: id)
+                self?.onRemovePet?(id)
+            },
             onQuit: { NSApp.terminate(nil) }
         )
         let hosting = NSHostingController(rootView: view)
-        hosting.view.setFrameSize(hosting.sizeThatFits(in: NSSize(width: 280, height: 600)))
+        hosting.view.setFrameSize(hosting.sizeThatFits(in: NSSize(width: 280, height: 700)))
 
         let panel = NSPanel(
             contentRect: NSRect(origin: .zero, size: hosting.view.frame.size),
@@ -97,62 +193,10 @@ final class MenuBarController: NSObject {
         return panel
     }
 
-    // MARK: - Context Menu (right click)
+    // MARK: - File Picker
 
-    private func showContextMenu(_ sender: NSStatusBarButton) {
-        let menu = NSMenu()
-
-        menu.addItem(withTitle: "Import Animation…", action: #selector(openFilePicker), keyEquivalent: "o").target = self
-        menu.addItem(.separator())
-
-        let playItem = NSMenuItem(
-            title: settings.playing ? "Pause" : "Play",
-            action: #selector(togglePlay),
-            keyEquivalent: " "
-        )
-        playItem.target = self
-        menu.addItem(playItem)
-
-        menu.addItem(.separator())
-
-        let topItem = NSMenuItem(
-            title: settings.alwaysOnTop ? "✓ Always on Top" : "Always on Top",
-            action: #selector(toggleAlwaysOnTop),
-            keyEquivalent: ""
-        )
-        topItem.target = self
-        menu.addItem(topItem)
-
-        let ctItem = NSMenuItem(
-            title: settings.clickThrough ? "✓ Click-Through" : "Click-Through",
-            action: #selector(toggleClickThrough),
-            keyEquivalent: ""
-        )
-        ctItem.target = self
-        menu.addItem(ctItem)
-
-        let lockItem = NSMenuItem(
-            title: settings.lockPosition ? "✓ Lock Position" : "Lock Position",
-            action: #selector(toggleLock),
-            keyEquivalent: ""
-        )
-        lockItem.target = self
-        menu.addItem(lockItem)
-
-        menu.addItem(.separator())
-        menu.addItem(withTitle: "Settings…", action: #selector(openSettings), keyEquivalent: ",").target = self
-        menu.addItem(.separator())
-        menu.addItem(withTitle: "Quit Desktop Pet", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
-
-        statusItem.menu = menu
-        statusItem.button?.performClick(nil)
-        statusItem.menu = nil // Reset so left-click works next time
-    }
-
-    // MARK: - Actions
-
-    @objc private func openFilePicker() {
-        settingsPanel?.orderOut(nil)
+    func openFilePicker(for pet: OverlayWindowController) {
+        settingsPanels[pet.settings.instanceID]?.orderOut(nil)
 
         let panel = NSOpenPanel()
         panel.canChooseFiles = true
@@ -166,34 +210,25 @@ final class MenuBarController: NSObject {
             UTType.quickTimeMovie,
             UTType.folder
         ]
-        panel.message = "Choose a GIF, APNG, PNG sequence folder, or video file"
+        panel.message = "Choose a GIF, APNG, PNG sequence folder, or video"
         panel.prompt = "Open"
 
         NSApp.activate(ignoringOtherApps: true)
         if panel.runModal() == .OK, let url = panel.url {
-            overlayWC?.loadAsset(url: url)
+            pet.loadAsset(url: url)
         }
     }
 
-    @objc private func togglePlay() {
-        settings.playing.toggle()
-    }
+    // MARK: - Sync
 
-    @objc private func toggleAlwaysOnTop() {
-        settings.alwaysOnTop.toggle()
-    }
-
-    @objc private func toggleClickThrough() {
-        settings.clickThrough.toggle()
-    }
-
-    @objc private func toggleLock() {
-        settings.lockPosition.toggle()
-    }
-
-    @objc private func openSettings() {
-        if let button = statusItem.button {
-            toggleSettingsPanel(button)
+    /// Called by AppDelegate whenever the pets array changes.
+    func update(pets: [OverlayWindowController]) {
+        self.pets = pets
+        // Close panels for removed pets
+        let activeIDs = Set(pets.map { $0.settings.instanceID })
+        for id in settingsPanels.keys where !activeIDs.contains(id) {
+            settingsPanels[id]?.orderOut(nil)
+            settingsPanels.removeValue(forKey: id)
         }
     }
 }
