@@ -1,5 +1,5 @@
 // SettingsView.swift
-// Per-pet settings panel presented from the menubar.
+// Per-pet settings panel with all configurable options.
 
 import SwiftUI
 import ServiceManagement
@@ -11,11 +11,12 @@ struct SettingsView: View {
     var onQuit: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: 14) {
 
-            // Header
+            // ── Header ────────────────────────────────────────────────────
             HStack {
-                Text("🐾 Desktop Pet")
+                TextField("Name", text: $settings.label)
+                    .textFieldStyle(.roundedBorder)
                     .font(.headline)
                 Spacer()
                 Button("Import…", action: onImport)
@@ -25,61 +26,60 @@ struct SettingsView: View {
 
             Divider()
 
-            // Playback
-            Group {
-                Toggle("Playing", isOn: $settings.playing)
+            // ── Playback ─────────────────────────────────────────────────
+            SectionHeader("Playback")
 
-                LabeledSlider(
-                    label: "Speed",
-                    value: $settings.speed,
-                    range: 0.1...4.0,
-                    format: "%.1fx"
-                )
+            Toggle("Playing", isOn: $settings.playing)
+
+            LabeledSlider(label: "Speed",
+                          value: $settings.speed,
+                          range: 0.1...4.0,
+                          format: "%.1fx")
+
+            Divider()
+
+            // ── Appearance ────────────────────────────────────────────────
+            SectionHeader("Appearance")
+
+            LabeledSlider(label: "Opacity",
+                          value: $settings.opacity,
+                          range: 0.1...1.0,
+                          format: "%.0f%%",
+                          displayMultiplier: 100)
+
+            LabeledSlider(label: "Scale",
+                          value: $settings.scale,
+                          range: 0.25...4.0,
+                          format: "%.2fx")
+
+            HStack(spacing: 16) {
+                Toggle("Flip H", isOn: $settings.flipHorizontal)
+                Toggle("Flip V", isOn: $settings.flipVertical)
             }
 
             Divider()
 
-            // Appearance
-            Group {
-                LabeledSlider(
-                    label: "Opacity",
-                    value: $settings.opacity,
-                    range: 0.1...1.0,
-                    format: "%.0f%%",
-                    displayMultiplier: 100
-                )
+            // ── Behavior ─────────────────────────────────────────────────
+            SectionHeader("Behavior")
 
-                LabeledSlider(
-                    label: "Scale",
-                    value: $settings.scale,
-                    range: 0.25...4.0,
-                    format: "%.2fx"
-                )
-            }
+            Toggle("Always on Top",  isOn: $settings.alwaysOnTop)
+            Toggle("Click-Through",  isOn: $settings.clickThrough)
+            Toggle("Lock Position",  isOn: $settings.lockPosition)
 
             Divider()
 
-            // Behavior
-            Group {
-                Toggle("Always on Top", isOn: $settings.alwaysOnTop)
-                Toggle("Click-Through", isOn: $settings.clickThrough)
-                Toggle("Lock Position", isOn: $settings.lockPosition)
-            }
-
-            Divider()
-
-            // System
+            // ── System ────────────────────────────────────────────────────
             StartAtLoginToggle()
 
             Divider()
 
-            // Bottom buttons
+            // ── Bottom buttons ────────────────────────────────────────────
             HStack {
                 Button(role: .destructive, action: onRemove) {
                     Label("Remove Pet", systemImage: "trash")
-                        .foregroundColor(.red)
                 }
                 .buttonStyle(.plain)
+                .foregroundColor(.red)
                 Spacer()
                 Button("Quit", action: onQuit)
                     .foregroundColor(.red)
@@ -87,6 +87,20 @@ struct SettingsView: View {
         }
         .padding(16)
         .frame(width: 280)
+    }
+}
+
+// MARK: - Section header
+
+private struct SectionHeader: View {
+    let title: String
+    init(_ title: String) { self.title = title }
+    var body: some View {
+        Text(title)
+            .font(.caption)
+            .fontWeight(.semibold)
+            .foregroundColor(.secondary)
+            .textCase(.uppercase)
     }
 }
 
@@ -124,15 +138,8 @@ private struct StartAtLoginToggle: View {
         Toggle("Start at Login", isOn: $isEnabled)
             .onAppear { isEnabled = SMAppService.mainApp.status == .enabled }
             .onChange(of: isEnabled) { _, newValue in
-                do {
-                    if newValue {
-                        try SMAppService.mainApp.register()
-                    } else {
-                        try SMAppService.mainApp.unregister()
-                    }
-                } catch {
-                    // Silently fail — user can set this manually in System Settings
-                }
+                try? newValue ? SMAppService.mainApp.register()
+                             : SMAppService.mainApp.unregister()
             }
     }
 }
