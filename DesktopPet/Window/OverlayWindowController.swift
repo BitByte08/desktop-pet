@@ -120,6 +120,20 @@ final class OverlayWindowController: NSWindowController {
         }.store(in: &cancellables)
     }
 
+    // MARK: - Visibility
+
+    /// Show or hide the overlay window without closing it.
+    /// The animation continues running in the background while hidden.
+    func setVisible(_ visible: Bool) {
+        if visible {
+            window?.orderFront(nil)
+        } else {
+            window?.orderOut(nil)
+        }
+    }
+
+    var isVisible: Bool { window?.isVisible ?? false }
+
     // MARK: - Asset Loading
 
     /// Restore asset from a security-scoped bookmark (app restart).
