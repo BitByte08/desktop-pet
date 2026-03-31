@@ -46,6 +46,7 @@ final class AnimationPlayer {
 
     // MARK: - Load
 
+    @MainActor
     func load(_ sequence: FrameSequence) {
         let wasPlaying = isPlaying
         stop()
