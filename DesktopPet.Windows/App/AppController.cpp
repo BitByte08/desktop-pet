@@ -76,13 +76,17 @@ LRESULT CALLBACK AppController::msgWndProc(HWND hwnd, UINT msg, WPARAM wp, LPARA
             int idx = cmd - WM_PET_SETTINGS;
             if (idx >= 0 && idx < (int)ctrl->pets_.size()) {
                 bool removed = false;
-                showSettingsDialog(hwnd, *ctrl->pets_[idx].settings, &removed);
+                auto& pet = ctrl->pets_[idx];
+                showSettingsDialog(hwnd, *pet.settings, &removed, [&]() {
+                    pet.player->setSpeed(pet.settings->speed);
+                    if (pet.settings->playing) pet.player->play();
+                    else pet.player->stop();
+                    pet.window->applySettings();
+                    pet.window->renderLastFrame();
+                });
                 if (removed) {
-                    auto* p = new std::string(ctrl->pets_[idx].settings->instanceID);
+                    auto* p = new std::string(pet.settings->instanceID);
                     PostMessageW(hwnd, WM_APP_REMOVE_PET, (WPARAM)p, 0);
-                } else {
-                    ctrl->pets_[idx].window->applySettings();
-                    ctrl->pets_[idx].window->renderLastFrame();
                 }
             }
         } else if (cmd >= WM_PET_SETTINGS + 100 && cmd < WM_PET_SETTINGS + 200) {
