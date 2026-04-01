@@ -11,16 +11,15 @@ TrayController::TrayController() {
     nid_.uID = IDR_TRAY_ICON;
     nid_.uFlags = NIF_ICON | NIF_MESSAGE | NIF_TIP;
     nid_.uCallbackMessage = WM_TRAYICON_MSG;
-#ifdef HAS_APP_ICON
+    // Try embedded resource first; fall back to default Windows icon
     nid_.hIcon = (HICON)LoadImageW(
         GetModuleHandle(nullptr),
         MAKEINTRESOURCEW(IDR_TRAY_ICON),
         IMAGE_ICON,
         GetSystemMetrics(SM_CXSMICON),
         GetSystemMetrics(SM_CYSMICON),
-        0);
+        LR_DEFAULTCOLOR);
     if (!nid_.hIcon)
-#endif
         nid_.hIcon = LoadIcon(nullptr, IDI_APPLICATION);
     wcscpy_s(nid_.szTip, L"Desktop Pet");
 }
@@ -76,7 +75,11 @@ void TrayController::showContextMenu(HWND hwnd) {
     POINT pt;
     GetCursorPos(&pt);
     SetForegroundWindow(hwnd);
+    // The message-only hwnd has no monitor → menus would render at 96 DPI and
+    // get stretched on HiDPI displays. Override to PerMonitorV2 for this call.
+    auto prevCtx = SetThreadDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
     TrackPopupMenu(hMenu_, TPM_BOTTOMALIGN | TPM_LEFTALIGN,
         pt.x, pt.y, 0, hwnd, nullptr);
+    SetThreadDpiAwarenessContext(prevCtx);
     PostMessageW(hwnd, WM_NULL, 0, 0);
 }
