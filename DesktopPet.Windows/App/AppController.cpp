@@ -194,7 +194,7 @@ void AppController::addPet() {
     settings->load(id);
 
     std::wstring path = openFileDialog(msgHwnd_);
-    if (path.empty()) { addDefaultPet(); return; }
+    if (path.empty()) return;
 
     auto wc = std::make_unique<OverlayWindow>(*settings);
     int x, y;
