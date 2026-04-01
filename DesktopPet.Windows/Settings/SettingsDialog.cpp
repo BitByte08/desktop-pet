@@ -7,6 +7,7 @@
 
 static AppSettings* g_dlgSettings = nullptr;
 static bool g_removeRequested = false;
+static std::function<void()> g_onChanged;
 
 static void applyFromUI(HWND hDlg) {
     if (!g_dlgSettings) return;
@@ -27,6 +28,7 @@ static void applyFromUI(HWND hDlg) {
     g_dlgSettings->label = std::string(buf, buf + wcslen(buf));
 
     g_dlgSettings->save();
+    if (g_onChanged) g_onChanged();
 }
 
 static void updateSliderLabel(HWND hDlg, int id) {
@@ -108,9 +110,11 @@ static INT_PTR CALLBACK dlgProc(HWND hDlg, UINT msg, WPARAM wp, LPARAM lp) {
     return FALSE;
 }
 
-void showSettingsDialog(HWND parent, AppSettings& settings, bool* removedOut) {
+void showSettingsDialog(HWND parent, AppSettings& settings, bool* removedOut,
+    std::function<void()> onChanged) {
     g_dlgSettings = &settings;
     g_removeRequested = false;
+    g_onChanged = std::move(onChanged);
 
     // The message-only parent window has no monitor → GetDpiForWindow returns 96.
     // Temporarily set PerMonitorV2 context so the dialog and its controls scale
@@ -141,6 +145,7 @@ void showSettingsDialog(HWND parent, AppSettings& settings, bool* removedOut) {
     if (removedOut) *removedOut = g_removeRequested;
     g_dlgSettings = nullptr;
     g_removeRequested = false;
+    g_onChanged = nullptr;
 }
 
 std::wstring openFileDialog(HWND parent) {
