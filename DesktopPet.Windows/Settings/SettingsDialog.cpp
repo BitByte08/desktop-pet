@@ -31,80 +31,98 @@ static void applyFromUI(HWND hDlg) {
     g_dlgSettings->save();
 }
 
-static HWND createSlider(HWND parent, int id, int x, int y, int w, int h, int minVal, int maxVal, int initVal) {
+// Scale a 96-DPI pixel value to the window's actual DPI
+static int S(int px, UINT dpi) { return MulDiv(px, (int)dpi, 96); }
+
+static HWND createSlider(HWND parent, int id, int x, int y, int w, int h,
+                          int minVal, int maxVal, int initVal, UINT dpi) {
     HWND sld = CreateWindowExW(0, TRACKBAR_CLASSW, L"",
         WS_CHILD | WS_VISIBLE | TBS_AUTOTICKS,
-        x, y, w, h, parent, (HMENU)(LONG_PTR)id,
+        S(x,dpi), S(y,dpi), S(w,dpi), S(h,dpi),
+        parent, (HMENU)(LONG_PTR)id,
         (HINSTANCE)GetWindowLongPtrW(parent, GWLP_HINSTANCE), nullptr);
     SendMessageW(sld, TBM_SETRANGE, TRUE, MAKELPARAM(minVal, maxVal));
     SendMessageW(sld, TBM_SETPOS, TRUE, initVal);
     return sld;
 }
 
-static HWND createCheckBox(HWND parent, int id, const wchar_t* text, int x, int y, int w, int h, bool checked) {
+static HWND createCheckBox(HWND parent, int id, const wchar_t* text,
+                            int x, int y, int w, int h, bool checked, UINT dpi) {
     HWND cb = CreateWindowExW(0, L"BUTTON", text,
         WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX,
-        x, y, w, h, parent, (HMENU)(LONG_PTR)id,
+        S(x,dpi), S(y,dpi), S(w,dpi), S(h,dpi),
+        parent, (HMENU)(LONG_PTR)id,
         (HINSTANCE)GetWindowLongPtrW(parent, GWLP_HINSTANCE), nullptr);
     SendMessageW(cb, BM_SETCHECK, checked ? BST_CHECKED : BST_UNCHECKED, 0);
     return cb;
 }
 
-static void createControls(HWND hDlg, AppSettings& s) {
-    HFONT hFont = CreateFontW(16, 0, 0, 0, FW_NORMAL, 0, 0, 0,
+static void createControls(HWND hDlg, AppSettings& s, UINT dpi) {
+    int fontPx = S(16, dpi);
+    HFONT hFont = CreateFontW(-fontPx, 0, 0, 0, FW_NORMAL, 0, 0, 0,
         DEFAULT_CHARSET, 0, 0, CLEARTYPE_QUALITY, 0, L"Segoe UI");
     int y = 10;
 
     CreateWindowExW(0, L"STATIC", L"Name:", WS_CHILD | WS_VISIBLE,
-        10, y + 3, 50, 20, hDlg, nullptr, nullptr, nullptr);
+        S(10,dpi), S(y+3,dpi), S(50,dpi), S(20,dpi), hDlg, nullptr, nullptr, nullptr);
     CreateWindowExW(0, L"EDIT", L"", WS_CHILD | WS_VISIBLE | WS_BORDER | ES_AUTOHSCROLL,
-        60, y, 150, 24, hDlg, (HMENU)(LONG_PTR)IDC_EDT_LABEL, nullptr, nullptr);
+        S(60,dpi), S(y,dpi), S(150,dpi), S(24,dpi),
+        hDlg, (HMENU)(LONG_PTR)IDC_EDT_LABEL, nullptr, nullptr);
     CreateWindowExW(0, L"BUTTON", L"Import...", WS_CHILD | WS_VISIBLE,
-        220, y, 70, 24, hDlg, (HMENU)(LONG_PTR)IDC_BTN_IMPORT, nullptr, nullptr);
+        S(220,dpi), S(y,dpi), S(70,dpi), S(24,dpi),
+        hDlg, (HMENU)(LONG_PTR)IDC_BTN_IMPORT, nullptr, nullptr);
     y += 35;
 
     CreateWindowExW(0, L"BUTTON", L"Playback", WS_CHILD | WS_VISIBLE | BS_GROUPBOX,
-        5, y, 290, 70, hDlg, nullptr, nullptr, nullptr);
+        S(5,dpi), S(y,dpi), S(290,dpi), S(70,dpi), hDlg, nullptr, nullptr, nullptr);
     y += 15;
-    createCheckBox(hDlg, IDC_CHK_PLAYING, L"Playing", 15, y, 80, 20, s.playing);
+    createCheckBox(hDlg, IDC_CHK_PLAYING, L"Playing", 15, y, 80, 20, s.playing, dpi);
     y += 25;
-    CreateWindowExW(0, L"STATIC", L"Speed:", WS_CHILD | WS_VISIBLE, 15, y + 3, 50, 16, hDlg, nullptr, nullptr, nullptr);
-    createSlider(hDlg, IDC_SLD_SPEED, 65, y, 170, 20, 10, 400, (int)(s.speed * 100));
-    CreateWindowExW(0, L"STATIC", L"", WS_CHILD | WS_VISIBLE, 240, y + 3, 50, 16, hDlg, (HMENU)(LONG_PTR)IDC_LBL_SPEED, nullptr, nullptr);
-    y += 30;
-    y += 10;
+    CreateWindowExW(0, L"STATIC", L"Speed:", WS_CHILD | WS_VISIBLE,
+        S(15,dpi), S(y+3,dpi), S(50,dpi), S(16,dpi), hDlg, nullptr, nullptr, nullptr);
+    createSlider(hDlg, IDC_SLD_SPEED, 65, y, 170, 20, 10, 400, (int)(s.speed * 100), dpi);
+    CreateWindowExW(0, L"STATIC", L"", WS_CHILD | WS_VISIBLE,
+        S(240,dpi), S(y+3,dpi), S(50,dpi), S(16,dpi),
+        hDlg, (HMENU)(LONG_PTR)IDC_LBL_SPEED, nullptr, nullptr);
+    y += 40;
 
     CreateWindowExW(0, L"BUTTON", L"Appearance", WS_CHILD | WS_VISIBLE | BS_GROUPBOX,
-        5, y, 290, 100, hDlg, nullptr, nullptr, nullptr);
+        S(5,dpi), S(y,dpi), S(290,dpi), S(100,dpi), hDlg, nullptr, nullptr, nullptr);
     y += 18;
-    CreateWindowExW(0, L"STATIC", L"Opacity:", WS_CHILD | WS_VISIBLE, 15, y + 3, 50, 16, hDlg, nullptr, nullptr, nullptr);
-    createSlider(hDlg, IDC_SLD_OPACITY, 65, y, 170, 20, 10, 100, (int)(s.opacity * 100));
-    CreateWindowExW(0, L"STATIC", L"", WS_CHILD | WS_VISIBLE, 240, y + 3, 50, 16, hDlg, (HMENU)(LONG_PTR)IDC_LBL_OPACITY, nullptr, nullptr);
+    CreateWindowExW(0, L"STATIC", L"Opacity:", WS_CHILD | WS_VISIBLE,
+        S(15,dpi), S(y+3,dpi), S(50,dpi), S(16,dpi), hDlg, nullptr, nullptr, nullptr);
+    createSlider(hDlg, IDC_SLD_OPACITY, 65, y, 170, 20, 10, 100, (int)(s.opacity * 100), dpi);
+    CreateWindowExW(0, L"STATIC", L"", WS_CHILD | WS_VISIBLE,
+        S(240,dpi), S(y+3,dpi), S(50,dpi), S(16,dpi),
+        hDlg, (HMENU)(LONG_PTR)IDC_LBL_OPACITY, nullptr, nullptr);
     y += 28;
-    CreateWindowExW(0, L"STATIC", L"Scale:", WS_CHILD | WS_VISIBLE, 15, y + 3, 50, 16, hDlg, nullptr, nullptr, nullptr);
-    createSlider(hDlg, IDC_SLD_SCALE, 65, y, 170, 20, 25, 400, (int)(s.scale * 100));
-    CreateWindowExW(0, L"STATIC", L"", WS_CHILD | WS_VISIBLE, 240, y + 3, 50, 16, hDlg, (HMENU)(LONG_PTR)IDC_LBL_SCALE, nullptr, nullptr);
+    CreateWindowExW(0, L"STATIC", L"Scale:", WS_CHILD | WS_VISIBLE,
+        S(15,dpi), S(y+3,dpi), S(50,dpi), S(16,dpi), hDlg, nullptr, nullptr, nullptr);
+    createSlider(hDlg, IDC_SLD_SCALE, 65, y, 170, 20, 25, 400, (int)(s.scale * 100), dpi);
+    CreateWindowExW(0, L"STATIC", L"", WS_CHILD | WS_VISIBLE,
+        S(240,dpi), S(y+3,dpi), S(50,dpi), S(16,dpi),
+        hDlg, (HMENU)(LONG_PTR)IDC_LBL_SCALE, nullptr, nullptr);
     y += 28;
-    createCheckBox(hDlg, IDC_CHK_FLIPH, L"Flip H", 15, y, 80, 20, s.flipHorizontal);
-    createCheckBox(hDlg, IDC_CHK_FLIPV, L"Flip V", 110, y, 80, 20, s.flipVertical);
-    y += 30;
-    y += 5;
+    createCheckBox(hDlg, IDC_CHK_FLIPH, L"Flip H",  15,  y, 80, 20, s.flipHorizontal, dpi);
+    createCheckBox(hDlg, IDC_CHK_FLIPV, L"Flip V", 110,  y, 80, 20, s.flipVertical,   dpi);
+    y += 35;
 
     CreateWindowExW(0, L"BUTTON", L"Behavior", WS_CHILD | WS_VISIBLE | BS_GROUPBOX,
-        5, y, 290, 85, hDlg, nullptr, nullptr, nullptr);
+        S(5,dpi), S(y,dpi), S(290,dpi), S(85,dpi), hDlg, nullptr, nullptr, nullptr);
     y += 18;
-    createCheckBox(hDlg, IDC_CHK_ONTOP, L"Always on Top", 15, y, 120, 20, s.alwaysOnTop);
+    createCheckBox(hDlg, IDC_CHK_ONTOP,    L"Always on Top", 15, y, 120, 20, s.alwaysOnTop,  dpi);
     y += 22;
-    createCheckBox(hDlg, IDC_CHK_CLICKTHRU, L"Click-Through", 15, y, 120, 20, s.clickThrough);
+    createCheckBox(hDlg, IDC_CHK_CLICKTHRU, L"Click-Through", 15, y, 120, 20, s.clickThrough, dpi);
     y += 22;
-    createCheckBox(hDlg, IDC_CHK_LOCKPOS, L"Lock Position", 15, y, 120, 20, s.lockPosition);
-    y += 30;
-    y += 5;
+    createCheckBox(hDlg, IDC_CHK_LOCKPOS,  L"Lock Position", 15, y, 120, 20, s.lockPosition, dpi);
+    y += 35;
 
     CreateWindowExW(0, L"BUTTON", L"Remove Pet", WS_CHILD | WS_VISIBLE,
-        10, y, 90, 28, hDlg, (HMENU)(LONG_PTR)IDC_BTN_REMOVE, nullptr, nullptr);
+        S(10,dpi), S(y,dpi), S(90,dpi), S(28,dpi),
+        hDlg, (HMENU)(LONG_PTR)IDC_BTN_REMOVE, nullptr, nullptr);
     CreateWindowExW(0, L"BUTTON", L"Close", WS_CHILD | WS_VISIBLE | BS_DEFPUSHBUTTON,
-        220, y, 70, 28, hDlg, (HMENU)(LONG_PTR)IDOK, nullptr, nullptr);
+        S(220,dpi), S(y,dpi), S(70,dpi), S(28,dpi),
+        hDlg, (HMENU)(LONG_PTR)IDOK, nullptr, nullptr);
 
     std::wstring wlabel(s.label.begin(), s.label.end());
     SetDlgItemTextW(hDlg, IDC_EDT_LABEL, wlabel.c_str());
@@ -179,14 +197,17 @@ void showSettingsDialog(HWND parent, AppSettings& settings, bool* removedOut) {
         dlgClassRegistered = true;
     }
 
+    UINT dpi = GetDpiForWindow(parent ? parent : GetDesktopWindow());
+
     HWND hDlg = CreateWindowExW(WS_EX_DLGMODALFRAME, DLG_CLASS,
         L"Desktop Pet Settings",
         WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU,
-        CW_USEDEFAULT, CW_USEDEFAULT, 310, 430,
+        CW_USEDEFAULT, CW_USEDEFAULT,
+        MulDiv(310, (int)dpi, 96), MulDiv(460, (int)dpi, 96),
         parent, nullptr, GetModuleHandle(nullptr), nullptr);
 
     g_hDlg = hDlg;
-    createControls(hDlg, settings);
+    createControls(hDlg, settings, dpi);
     ShowWindow(hDlg, SW_SHOW);
     UpdateWindow(hDlg);
 
